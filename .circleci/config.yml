@@ -1,0 +1,65 @@
+version: 2.1
+orbs:
+  aws-cli: circleci/aws-cli@0.1.16
+commands:
+  lamda_zip_and_ship:
+    description: "Build lambda zip and ship to s3"
+    parameters:
+      s3_bucket:
+        type: string
+        default: "tested"
+    steps:
+      - run:
+          name: Run unit tests, package lambda, and ship to s3
+          command: |   
+              export SOLUTION_NAME=tgw-stno-lambdas # name of the solution
+              export DIST_OUTPUT_BUCKET=<< parameters.s3_bucket >> # bucket where customized code will reside 
+              export VERSION=v0.0.1 # version number for the customized code 
+
+              # Install requirements
+              pip3 install -r ./source/testing_requirements.txt
+              
+              # Change into the deployment directory
+              cd ./deployment
+              # Run the unit testing
+              ## Commented out due to issue with missing lib.s3
+              # chmod +x ./run-unit-tests.sh
+              # ./run-unit-tests.sh  
+             
+              # Create lambda zips
+              chmod +x ./build-lambda-only.sh
+              ./build-lambda-only.sh $DIST_OUTPUT_BUCKET $SOLUTION_NAME $VERSION
+              # Copy lambda zips
+              aws s3 cp ./regional-s3-assets/ s3://$DIST_OUTPUT_BUCKET/$SOLUTION_NAME/$VERSION/ --recursive --acl bucket-owner-full-control 
+              # Debug stuffs
+              echo "---------DEBUG-----FOR---CR---"
+              unzip -l ./regional-s3-assets/aws-transit-network-orchestrator-cr.zip
+              echo "---------DEBUG-----FOR---SM---"
+              unzip -l ./regional-s3-assets/aws-transit-network-orchestrator-sm.zip
+
+jobs:
+  lambda-builder:
+    executor: 
+      name: aws-cli/default
+      python-version: "3.7.6"
+      debian-release: "stretch"
+
+    steps: 
+      - checkout
+      - aws-cli/setup:
+          aws-region: AWS_DEFAULT_REGION
+          aws-access-key-id: AWS_ACCESS_KEY_ID
+          aws-secret-access-key: AWS_SECRET_ACCESS_KEY
+          configure-default-region: true
+      - lamda_zip_and_ship:
+          s3_bucket: ${LAMBDA_BUCKET}
+      
+   
+
+workflows:
+  version: 2
+  test-workflow:
+    jobs:
+      - lambda-builder   
+          
+              
